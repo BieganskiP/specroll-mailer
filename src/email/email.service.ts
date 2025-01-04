@@ -1,29 +1,58 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class EmailService {
   private transporter: nodemailer.Transporter;
+  private readonly logger = new Logger(EmailService.name);
 
   constructor(private configService: ConfigService) {
+    const host = this.configService.get<string>('SMTP_HOST');
+    const port = this.configService.get<number>('SMTP_PORT');
+    const user = this.configService.get<string>('SMTP_USER');
+
+    this.logger.log(
+      `Initializing SMTP transport with host: ${host}, port: ${port}, user: ${user}`,
+    );
+
     this.transporter = nodemailer.createTransport({
-      host: this.configService.get<string>('SMTP_HOST'),
-      port: this.configService.get<number>('SMTP_PORT'),
+      host,
+      port,
       secure: true,
       auth: {
-        user: this.configService.get<string>('SMTP_USER'),
-        pass: this.configService.get<string>('SMTP_PASS'),
+        user,
+        pass: this.configService.get<string>('SMTP_PASSWORD'),
       },
     });
   }
 
-  async sendConfirmationEmail(email: string, name: string, topic: string, message: string) {
-    await this.transporter.sendMail({
-      from: this.configService.get<string>('SMTP_FROM'),
-      to: email,
-      subject: "Dziękujemy za kontakt ze Specroll",
-      html: `
+  private async verifyConnection() {
+    try {
+      await this.transporter.verify();
+      this.logger.log('SMTP connection verified successfully');
+      return true;
+    } catch (error) {
+      this.logger.error('SMTP connection verification failed:', error);
+      throw error;
+    }
+  }
+
+  async sendConfirmationEmail(
+    email: string,
+    name: string,
+    topic: string,
+    message: string,
+  ) {
+    await this.verifyConnection();
+    this.logger.log(`Sending confirmation email to ${email}`);
+
+    try {
+      await this.transporter.sendMail({
+        from: this.configService.get<string>('SMTP_FROM'),
+        to: email,
+        subject: 'Dziękujemy za kontakt ze Specroll',
+        html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #ffffff; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
             <div style="text-align: center; padding: 20px 0; background-color: #f8f9fa; border-radius: 5px;">
                 <h1 style="color: #333; margin: 0; font-size: 24px;">Dziękujemy za kontakt ze Specroll</h1>
@@ -90,15 +119,36 @@ export class EmailService {
             </div>
         </div>
       `,
-    });
+      });
+      this.logger.log(`Confirmation email sent successfully to ${email}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send confirmation email to ${email}:`,
+        error,
+      );
+      throw error;
+    }
   }
 
-  async sendNotificationEmail(recipientEmails: string[], name: string, email: string, phone: string, topic: string, message: string) {
-    await this.transporter.sendMail({
-      from: this.configService.get<string>('SMTP_FROM'),
-      to: recipientEmails.join(","),
-      subject: `Nowa wiadomość z formularza kontaktowego: ${topic}`,
-      html: `
+  async sendNotificationEmail(
+    recipientEmails: string[],
+    name: string,
+    email: string,
+    phone: string,
+    topic: string,
+    message: string,
+  ) {
+    await this.verifyConnection();
+    this.logger.log(
+      `Sending notification email to ${recipientEmails.join(', ')}`,
+    );
+
+    try {
+      await this.transporter.sendMail({
+        from: this.configService.get<string>('SMTP_FROM'),
+        to: recipientEmails.join(','),
+        subject: `Nowa wiadomość z formularza kontaktowego: ${topic}`,
+        html: `
         <h2>Nowa wiadomość z formularza kontaktowego</h2>
         <p><strong>Imię i nazwisko:</strong> ${name}</p>
         <p><strong>Email:</strong> ${email}</p>
@@ -107,6 +157,16 @@ export class EmailService {
         <p><strong>Wiadomość:</strong></p>
         <p>${message}</p>
       `,
-    });
+      });
+      this.logger.log(
+        `Notification email sent successfully to ${recipientEmails.join(', ')}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to send notification email to ${recipientEmails.join(', ')}:`,
+        error,
+      );
+      throw error;
+    }
   }
-} 
+}
