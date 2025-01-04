@@ -4,11 +4,17 @@ const nodemailer = require("nodemailer");
 const cors = require("cors");
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 8080;
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
 // Basic health check endpoint
 app.get("/", (req, res) => {
@@ -18,7 +24,7 @@ app.get("/", (req, res) => {
 // Create transporter
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT,
+  port: parseInt(process.env.SMTP_PORT),
   secure: process.env.SMTP_SECURE === "true",
   auth: {
     user: process.env.SMTP_USER,
@@ -37,10 +43,12 @@ transporter.verify(function (error, success) {
 
 app.post("/api/contact", async (req, res) => {
   try {
+    console.log("Received contact request:", req.body);
     const { name, email, phone, topic, message } = req.body;
 
     // Validate required fields
     if (!name || !email || !phone || !topic || !message) {
+      console.log("Missing required fields");
       return res.status(400).json({ error: "Wszystkie pola są wymagane" });
     }
 
@@ -135,6 +143,7 @@ app.post("/api/contact", async (req, res) => {
             `,
     });
 
+    console.log("Emails sent successfully");
     res.status(200).json({ message: "Wiadomość została wysłana pomyślnie" });
   } catch (error) {
     console.error("Błąd wysyłania wiadomości:", error);
@@ -154,11 +163,21 @@ app.use((err, req, res, next) => {
 });
 
 // Start server with error handling
-const server = app
-  .listen(port, "0.0.0.0", () => {
-    console.log(`Serwer działa na porcie ${port}`);
-  })
-  .on("error", (err) => {
-    console.error("Server failed to start:", err);
-    process.exit(1);
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
+});
+
+process.on("unhandledRejection", (err) => {
+  console.error("Unhandled Rejection:", err);
+});
+
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+  console.log("Environment variables loaded:", {
+    SMTP_HOST: process.env.SMTP_HOST,
+    SMTP_PORT: process.env.SMTP_PORT,
+    SMTP_USER: process.env.SMTP_USER,
+    SMTP_FROM: process.env.SMTP_FROM,
+    RECIPIENT_EMAILS: process.env.RECIPIENT_EMAILS,
   });
+});
