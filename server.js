@@ -171,7 +171,7 @@ process.on("unhandledRejection", (err) => {
   console.error("Unhandled Rejection:", err);
 });
 
-app.listen(port, () => {
+app.listen(Number(process.env.PORT) || 8080, "0.0.0.0", () => {
   console.log(`Server is running on port ${port}`);
   console.log("Environment variables loaded:", {
     SMTP_HOST: process.env.SMTP_HOST,
