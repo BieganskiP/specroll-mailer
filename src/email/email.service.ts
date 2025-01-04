@@ -1,77 +1,26 @@
-require("dotenv").config();
-const express = require("express");
-const nodemailer = require("nodemailer");
-const cors = require("cors");
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import * as nodemailer from 'nodemailer';
 
-const app = express();
-const port = process.env.PORT || 8080;
+@Injectable()
+export class EmailService {
+  private transporter: nodemailer.Transporter;
 
-// Middleware
-app.use(express.json());
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
-
-// Basic health check endpoint
-app.get("/", (req, res) => {
-  res.status(200).json({ status: "ok", message: "Server is running" });
-});
-
-// Create transporter
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT),
-  secure: process.env.SMTP_SECURE === "true",
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASSWORD,
-  },
-});
-
-// Verify SMTP connection on startup
-transporter.verify(function (error, success) {
-  if (error) {
-    console.error("SMTP connection error:", error);
-  } else {
-    console.log("SMTP server is ready to take our messages");
-  }
-});
-
-app.post("/api/contact", async (req, res) => {
-  try {
-    console.log("Received contact request:", req.body);
-    const { name, email, phone, topic, message } = req.body;
-
-    // Validate required fields
-    if (!name || !email || !phone || !topic || !message) {
-      console.log("Missing required fields");
-      return res.status(400).json({ error: "Wszystkie pola są wymagane" });
-    }
-
-    // Send email to administrators
-    const recipientEmails = process.env.RECIPIENT_EMAILS.split(",");
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM,
-      to: recipientEmails.join(","),
-      subject: `Nowa wiadomość z formularza kontaktowego: ${topic}`,
-      html: `
-                <h2>Nowa wiadomość z formularza kontaktowego</h2>
-                <p><strong>Imię i nazwisko:</strong> ${name}</p>
-                <p><strong>Email:</strong> ${email}</p>
-                <p><strong>Telefon:</strong> ${phone}</p>
-                <p><strong>Temat:</strong> ${topic}</p>
-                <p><strong>Wiadomość:</strong></p>
-                <p>${message}</p>
-            `,
+  constructor(private configService: ConfigService) {
+    this.transporter = nodemailer.createTransport({
+      host: this.configService.get<string>('SMTP_HOST'),
+      port: this.configService.get<number>('SMTP_PORT'),
+      secure: true,
+      auth: {
+        user: this.configService.get<string>('SMTP_USER'),
+        pass: this.configService.get<string>('SMTP_PASS'),
+      },
     });
+  }
 
-    // Send confirmation email to the client
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM,
+  async sendConfirmationEmail(email: string, name: string, topic: string, message: string) {
+    await this.transporter.sendMail({
+      from: this.configService.get<string>('SMTP_FROM'),
       to: email,
       subject: "Dziękujemy za kontakt ze Specroll",
       html: `
@@ -140,44 +89,24 @@ app.post("/api/contact", async (req, res) => {
                 </div>
             </div>
         </div>
-            `,
-    });
-
-    console.log("Emails sent successfully");
-    res.status(200).json({ message: "Wiadomość została wysłana pomyślnie" });
-  } catch (error) {
-    console.error("Błąd wysyłania wiadomości:", error);
-    res.status(500).json({
-      error: "Nie udało się wysłać wiadomości",
-      details: error.message,
+      `,
     });
   }
-});
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res
-    .status(500)
-    .json({ error: "Wystąpił błąd serwera", details: err.message });
-});
-
-// Start server with error handling
-process.on("uncaughtException", (err) => {
-  console.error("Uncaught Exception:", err);
-});
-
-process.on("unhandledRejection", (err) => {
-  console.error("Unhandled Rejection:", err);
-});
-
-app.listen(Number(process.env.PORT) || 8080, "0.0.0.0", () => {
-  console.log(`Server is running on port ${port}`);
-  console.log("Environment variables loaded:", {
-    SMTP_HOST: process.env.SMTP_HOST,
-    SMTP_PORT: process.env.SMTP_PORT,
-    SMTP_USER: process.env.SMTP_USER,
-    SMTP_FROM: process.env.SMTP_FROM,
-    RECIPIENT_EMAILS: process.env.RECIPIENT_EMAILS,
-  });
-});
+  async sendNotificationEmail(recipientEmails: string[], name: string, email: string, phone: string, topic: string, message: string) {
+    await this.transporter.sendMail({
+      from: this.configService.get<string>('SMTP_FROM'),
+      to: recipientEmails.join(","),
+      subject: `Nowa wiadomość z formularza kontaktowego: ${topic}`,
+      html: `
+        <h2>Nowa wiadomość z formularza kontaktowego</h2>
+        <p><strong>Imię i nazwisko:</strong> ${name}</p>
+        <p><strong>Email:</strong> ${email}</p>
+        <p><strong>Telefon:</strong> ${phone}</p>
+        <p><strong>Temat:</strong> ${topic}</p>
+        <p><strong>Wiadomość:</strong></p>
+        <p>${message}</p>
+      `,
+    });
+  }
+} 
