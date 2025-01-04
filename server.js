@@ -10,6 +10,11 @@ const port = process.env.PORT || 3000;
 app.use(express.json());
 app.use(cors());
 
+// Basic health check endpoint
+app.get("/", (req, res) => {
+  res.status(200).json({ status: "ok", message: "Server is running" });
+});
+
 // Create transporter
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
@@ -21,13 +26,22 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+// Verify SMTP connection on startup
+transporter.verify(function (error, success) {
+  if (error) {
+    console.error("SMTP connection error:", error);
+  } else {
+    console.log("SMTP server is ready to take our messages");
+  }
+});
+
 app.post("/api/contact", async (req, res) => {
   try {
     const { name, email, phone, topic, message } = req.body;
 
     // Validate required fields
     if (!name || !email || !phone || !topic || !message) {
-      return res.status(400).json({ error: "All fields are required" });
+      return res.status(400).json({ error: "Wszystkie pola są wymagane" });
     }
 
     // Send email to administrators
@@ -35,14 +49,14 @@ app.post("/api/contact", async (req, res) => {
     await transporter.sendMail({
       from: process.env.SMTP_FROM,
       to: recipientEmails.join(","),
-      subject: `New Contact Form Submission: ${topic}`,
+      subject: `Nowa wiadomość z formularza kontaktowego: ${topic}`,
       html: `
-                <h2>New Contact Form Submission</h2>
-                <p><strong>Name:</strong> ${name}</p>
+                <h2>Nowa wiadomość z formularza kontaktowego</h2>
+                <p><strong>Imię i nazwisko:</strong> ${name}</p>
                 <p><strong>Email:</strong> ${email}</p>
-                <p><strong>Phone:</strong> ${phone}</p>
-                <p><strong>Topic:</strong> ${topic}</p>
-                <p><strong>Message:</strong></p>
+                <p><strong>Telefon:</strong> ${phone}</p>
+                <p><strong>Temat:</strong> ${topic}</p>
+                <p><strong>Wiadomość:</strong></p>
                 <p>${message}</p>
             `,
     });
@@ -51,7 +65,7 @@ app.post("/api/contact", async (req, res) => {
     await transporter.sendMail({
       from: process.env.SMTP_FROM,
       to: email,
-      subject: "Thank you for contacting Specroll",
+      subject: "Dziękujemy za kontakt ze Specroll",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #ffffff; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
             <div style="text-align: center; padding: 20px 0; background-color: #f8f9fa; border-radius: 5px;">
@@ -121,13 +135,30 @@ app.post("/api/contact", async (req, res) => {
             `,
     });
 
-    res.status(200).json({ message: "Message sent successfully" });
+    res.status(200).json({ message: "Wiadomość została wysłana pomyślnie" });
   } catch (error) {
-    console.error("Error sending email:", error);
-    res.status(500).json({ error: "Failed to send message" });
+    console.error("Błąd wysyłania wiadomości:", error);
+    res.status(500).json({
+      error: "Nie udało się wysłać wiadomości",
+      details: error.message,
+    });
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res
+    .status(500)
+    .json({ error: "Wystąpił błąd serwera", details: err.message });
 });
+
+// Start server with error handling
+const server = app
+  .listen(port, "0.0.0.0", () => {
+    console.log(`Serwer działa na porcie ${port}`);
+  })
+  .on("error", (err) => {
+    console.error("Server failed to start:", err);
+    process.exit(1);
+  });
