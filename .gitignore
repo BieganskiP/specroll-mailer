@@ -2,6 +2,7 @@
 /dist
 /build
 
-# Ignore all files in the .env directory
-.env/
-
+# Ignore .env files
+.env
+*.env
+.env.*
